@@ -10,10 +10,10 @@ namespace Challenge.Models
         public Telemetry Telemetry { get; set; } = new();
         public string Status { get; set; } = ""; //maybe can be enum, not necessary
         public Timestamps Timestamps { get; set; } = new();
-        public double Altitude { get; set; }
-        public double Speed { get; set; }
-        public double Acceleration { get; set; }
-        public double Thrust { get; set; }
-        public double Temperature { get; set; }
+        public float Altitude { get; set; }
+        public float Speed { get; set; }
+        public float Acceleration { get; set; }
+        public float Thrust { get; set; }
+        public float Temperature { get; set; }
     }
 }
