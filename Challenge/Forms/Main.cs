@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Text;
 
 namespace Challenge.Forms
 {
@@ -27,7 +28,84 @@ namespace Challenge.Forms
             Height = 950;
             var rockets = await GetRocketsAsync();
             LoadRocketsToForm(rockets);
+            ConnectRockets(rockets);
             InitializeTimer();
+        }
+
+        private void ConnectRockets(List<Rocket> rockets)
+        {
+            foreach (var rocket in rockets)
+            {
+                var thread = new Thread(() => ConnectToRocket(rocket));
+                thread.Start();
+            }
+        }
+
+        private void ConnectToRocket(Rocket rocket)
+        {
+            var tcpClient = new TcpClient();
+            try
+            {
+                tcpClient.Connect("localhost", rocket.Telemetry.Port);
+                var networkStream = tcpClient.GetStream();
+                var panel = FindPanel(rocket.Id);
+                panel.BackColor = GetPanelColorByConnectionStatus(ConnectionStatus.Connected);
+                while (true)
+                {
+                    byte[] buffer = new byte[1024];
+                    int bytesRead = networkStream.Read(buffer, 0, buffer.Length);
+                    if (bytesRead > 0)
+                    {
+                        var rocketId = Encoding.UTF8.GetString(buffer, 1, 10);
+                        var altitude = ConvertByteArrayToFloatBigEndian(buffer, 13, 16);
+                        var speed = ConvertByteArrayToFloatBigEndian(buffer, 17, 20);
+                        var thrust = ConvertByteArrayToFloatBigEndian(buffer, 25, 28);
+                        var temperature = ConvertByteArrayToFloatBigEndian(buffer, 29, 32);
+                        Debug.WriteLine($"id: {rocketId} - altitude: {altitude:F2} - speed: {speed:F2} - thrust: {thrust:F2} - temp: {temperature:F2}");
+                    }
+                    else
+                        throw new Exception();
+                    Thread.Sleep(100);
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{rocket.Id} disconnected: {ex.Message}");
+                var panel = FindPanel(rocket.Id);
+                panel.BackColor = GetPanelColorByConnectionStatus(ConnectionStatus.Disconnected);
+                ConnectToRocket(rocket);
+            }
+        }
+
+        public float ConvertByteArrayToFloatBigEndian(byte[] byteArray, int startIndex, int endIndex)
+        {
+            byte[] reversedBytes = new byte[sizeof(float)];
+            for (int i = startIndex, j = 0; i <= endIndex; i++, j++)
+            {
+                reversedBytes[j] = byteArray[i];
+            }
+            Array.Reverse(reversedBytes);
+            return BitConverter.ToSingle(reversedBytes, 0);
+        }
+
+        private Panel FindPanel(string id)
+        {
+            foreach (var control in Controls)
+            {
+                if (control is Panel)
+                {
+                    var panel = (Panel)control;
+                    if (panel.Tag == id)
+                    {
+                        return panel;
+                    }
+                }
+            }
+            return null;
         }
 
         private void InitializeTimer()
@@ -57,6 +135,10 @@ namespace Challenge.Forms
                         Text = weather.ToString();
                     }
                 }
+                catch (HttpRequestException ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                }
                 catch (Exception ex)
                 {
                     Debug.WriteLine(ex.Message);
@@ -64,7 +146,6 @@ namespace Challenge.Forms
                 }
             }
         }
-
 
         private void LoadRocketsToForm(List<Rocket> rockets)
         {
@@ -134,7 +215,7 @@ namespace Challenge.Forms
             }
         }
 
-        private static Label GetLabel(string tag, string text, Point location)
+        private Label GetLabel(string tag, string text, Point location)
         {
             var label = new Label();
             label.Tag = tag;
@@ -162,6 +243,11 @@ namespace Challenge.Forms
                         return await GetRocketsAsync();
 
                     return [];
+                }
+                catch (HttpRequestException ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                    return await GetRocketsAsync();
                 }
                 catch (Exception ex)
                 {
