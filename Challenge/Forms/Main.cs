@@ -55,9 +55,9 @@ namespace Challenge.Forms
 
         private void ConnectToRocket(Rocket rocket)
         {
+            var tcpClient = new TcpClient();
             try
             {
-                var tcpClient = new TcpClient();
                 tcpClient.Connect("localhost", rocket.Telemetry.Port);
                 var networkStream = tcpClient.GetStream();
                 var panel = FindPanel(rocket.Id);
@@ -86,33 +86,19 @@ namespace Challenge.Forms
                         var bypassValue = ConvertByteArrayToShortBigEndian(buffer, 33, 34);
                         var delimiter = buffer[35];//128
 
-                        Debug.WriteLine($"" +
-                        $"packetStartByte: {packetStartByte} - " +
-                        $"id: {rocketId} - " +
-                        $"packetNumber: {packetNumber} - " +
-                        $"packetSize: {packetSize} - " +
-                        $"altitude: {altitude:F2} - " +
-                        $"speed: {speed:F2} - " +
-                        $"thrust: {thrust:F2} - " +
-                        $"bypassValue: {bypassValue} - " +
-                        $"delimiter: {delimiter} - " +
-                        $"temp: {temperature:F2}");
-
                         var panelFromReceivedId = FindPanel(rocketId);
                         if (panelFromReceivedId != null)
                             UpdateTelemetryValues(panelFromReceivedId, altitude, speed, thrust, temperature);
                         Thread.Sleep(100);
                     }
                     else
-                    {
-                        Debug.WriteLine("bytesRead 0");
-                    }
-
+                        throw new Exception();
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"{rocket.Id} disconnected: {ex.Message}");
+                tcpClient.Close();
                 var panel = FindPanel(rocket.Id);
                 if (panel != null)
                 {
