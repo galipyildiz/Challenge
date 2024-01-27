@@ -12,7 +12,7 @@ namespace Challenge.Forms
         private readonly string ApiUrl = "http://localhost:5000";
         private readonly string tokenKey = "X-API-Key";
         private readonly string tokenValue = "API_KEY_1";
-        private const int labelHeight = 23;
+        private const int controlHeight = 23;
         private const int paddingValue = 10;
         private const int panelHeight = 450;
         private const int panelWidth = 300;
@@ -61,7 +61,9 @@ namespace Challenge.Forms
                 tcpClient.Connect("localhost", rocket.Telemetry.Port);
                 var networkStream = tcpClient.GetStream();
                 var panel = FindPanel(rocket.Id);
-                panel.BackColor = GetPanelColorByConnectionStatus(ConnectionStatus.Connected);
+                if (panel != null)
+                    panel.BackColor = GetPanelColorByConnectionStatus(ConnectionStatus.Connected);
+
                 while (true)
                 {
 
@@ -97,11 +99,12 @@ namespace Challenge.Forms
                         $"temp: {temperature:F2}");
 
                         var panelFromReceivedId = FindPanel(rocketId);
-                        UpdateTelemetryValues(panelFromReceivedId, altitude, speed, thrust, temperature);
+                        if (panelFromReceivedId != null)
+                            UpdateTelemetryValues(panelFromReceivedId, altitude, speed, thrust, temperature);
                         Thread.Sleep(100);
                     }
-                    else
-                        throw new Exception();
+                    else { }
+                    //throw new Exception();
                 }
             }
             catch (Exception ex)
@@ -124,7 +127,6 @@ namespace Challenge.Forms
                 {
                     foreach (Control control in panel.Controls)
                     {
-
                         switch (control.Tag)
                         {
                             case "Altitude":
@@ -145,22 +147,32 @@ namespace Challenge.Forms
 
                     }
                 }));
-
             }
-        }
-
-        private Label FindLabelWithTagValue(Control.ControlCollection controls, string tag)
-        {
-            foreach (Control control in controls)
+            else
             {
-                if (control.Tag.Equals(tag))
+                foreach (Control control in panel.Controls)
                 {
-                    return (Label)control;
+                    switch (control.Tag)
+                    {
+                        case "Altitude":
+                            control.Text = "Altitude: " + altitude.ToString("F2");
+                            break;
+                        case "Speed":
+                            control.Text = "Speed: " + speed.ToString("F2");
+                            break;
+                        case "Thrust":
+                            control.Text = "Thrust: " + thrust.ToString("F2");
+                            break;
+                        case "Temperature":
+                            control.Text = "Temperature: " + temperature.ToString("F2");
+                            break;
+                        default:
+                            break;
+                    }
+
                 }
             }
-            return null;
         }
-
         public float ConvertByteArrayToFloatBigEndian(byte[] byteArray, int startIndex, int endIndex)
         {
             byte[] reversedBytes = new byte[sizeof(float)];
@@ -182,13 +194,16 @@ namespace Challenge.Forms
             return BitConverter.ToInt16(reversedBytes, 0);
         }
 
-        private Panel FindPanel(string id)
+        private Panel? FindPanel(string id)
         {
             foreach (Control rocketPanel in Controls)
             {
-                if (rocketPanel.Tag.Equals(id))
+                if (rocketPanel.Tag != null)
                 {
-                    return (Panel)rocketPanel;
+                    if (rocketPanel.Tag.Equals(id))
+                    {
+                        return (Panel)rocketPanel;
+                    }
                 }
             }
             return null;
@@ -196,27 +211,26 @@ namespace Challenge.Forms
 
         private async Task UpdateWeatherInformations()
         {
-            using (var client = new HttpClient())
+            using var client = new HttpClient();
+            try
             {
-                try
+                client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
+                var response = await client.GetAsync(ApiUrl + "/weather");
+                if (response.IsSuccessStatusCode)
                 {
-                    client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
-                    var response = await client.GetAsync(ApiUrl + "/weather");
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var weather = await response.Content.ReadFromJsonAsync<Weather>();
+                    var weather = await response.Content.ReadFromJsonAsync<Weather>();
+                    if (weather != null)
                         Text = weather.ToString();
-                    }
                 }
-                catch (HttpRequestException ex)
-                {
-                    Debug.WriteLine(ex.Message);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine(ex.Message);
-                    throw;
-                }
+            }
+            catch (HttpRequestException ex)
+            {
+                Debug.WriteLine(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
+                throw;
             }
         }
 
@@ -236,19 +250,46 @@ namespace Challenge.Forms
                 panel.BackColor = GetPanelColorByConnectionStatus(rockets[i].Telemetry.ConnectionStatus);
 
                 var idLabel = GetLabel("Id", rockets[i].Id, new Point(0, 0));
-                var modelLabel = GetLabel("Model", rockets[i].Model, new Point(0, idLabel.Location.Y + labelHeight));
-                var descriptionLabel = GetLabel("Description", rockets[i].Payload.Description, new Point(0, modelLabel.Location.Y + labelHeight));
-                var weightLabel = GetLabel("Weight", rockets[i].Payload.Weight.ToString(), new Point(0, descriptionLabel.Location.Y + labelHeight));
-                var statusLabel = GetLabel("Status", rockets[i].Status, new Point(0, weightLabel.Location.Y + labelHeight));
-                var launchedLabel = GetLabel("Launched", rockets[i].Timestamps.Launched.ToString(), new Point(0, statusLabel.Location.Y + labelHeight));
-                var deployedLabel = GetLabel("Deployed", rockets[i].Timestamps.Deployed.ToString(), new Point(0, launchedLabel.Location.Y + labelHeight));
-                var failedLabel = GetLabel("Failed", rockets[i].Timestamps.Failed.ToString(), new Point(0, deployedLabel.Location.Y + labelHeight));
-                var cancelledLabel = GetLabel("Canceled", rockets[i].Timestamps.Canceled.ToString(), new Point(0, failedLabel.Location.Y + labelHeight));
-                var alitudeLabel = GetLabel("Altitude", rockets[i].Altitude.ToString("F2"), new Point(0, cancelledLabel.Location.Y + labelHeight));
-                var speedLabel = GetLabel("Speed", rockets[i].Speed.ToString("F2"), new Point(0, alitudeLabel.Location.Y + labelHeight));
-                var accelerationLabel = GetLabel("Acceleration", rockets[i].Acceleration.ToString("F2"), new Point(0, speedLabel.Location.Y + labelHeight));
-                var thrustLabel = GetLabel("Thrust", rockets[i].Thrust.ToString("F2"), new Point(0, accelerationLabel.Location.Y + labelHeight));
-                var temperatureLabel = GetLabel("Temperature", rockets[i].Temperature.ToString("F2"), new Point(0, thrustLabel.Location.Y + labelHeight));
+                var modelLabel = GetLabel("Model", rockets[i].Model, new Point(0, idLabel.Location.Y + controlHeight));
+                var descriptionLabel = GetLabel("Description", rockets[i].Payload.Description, new Point(0, modelLabel.Location.Y + controlHeight));
+                var weightLabel = GetLabel("Weight", rockets[i].Payload.Weight.ToString(), new Point(0, descriptionLabel.Location.Y + controlHeight));
+                var statusLabel = GetLabel("Status", rockets[i].Status, new Point(0, weightLabel.Location.Y + controlHeight));
+                var launchedLabel = GetLabel("Launched", rockets[i].Timestamps.Launched.ToString(), new Point(0, statusLabel.Location.Y + controlHeight));
+                var deployedLabel = GetLabel("Deployed", rockets[i].Timestamps.Deployed.ToString(), new Point(0, launchedLabel.Location.Y + controlHeight));
+                var failedLabel = GetLabel("Failed", rockets[i].Timestamps.Failed.ToString(), new Point(0, deployedLabel.Location.Y + controlHeight));
+                var cancelledLabel = GetLabel("Canceled", rockets[i].Timestamps.Canceled.ToString(), new Point(0, failedLabel.Location.Y + controlHeight));
+                var alitudeLabel = GetLabel("Altitude", rockets[i].Altitude.ToString("F2"), new Point(0, cancelledLabel.Location.Y + controlHeight));
+                var speedLabel = GetLabel("Speed", rockets[i].Speed.ToString("F2"), new Point(0, alitudeLabel.Location.Y + controlHeight));
+                var accelerationLabel = GetLabel("Acceleration", rockets[i].Acceleration.ToString("F2"), new Point(0, speedLabel.Location.Y + controlHeight));
+                var thrustLabel = GetLabel("Thrust", rockets[i].Thrust.ToString("F2"), new Point(0, accelerationLabel.Location.Y + controlHeight));
+                var temperatureLabel = GetLabel("Temperature", rockets[i].Temperature.ToString("F2"), new Point(0, thrustLabel.Location.Y + controlHeight));
+
+                var launchButton = new Button()
+                {
+                    Text = "Launch",
+                    Tag = rockets[i].Id,
+                    Location = new Point(0, temperatureLabel.Location.Y + controlHeight),
+                    BackColor = Color.White
+                };
+                launchButton.Click += LaunchButton_Click;
+
+                var deployButton = new Button()
+                {
+                    Text = "Deploy",
+                    Tag = rockets[i].Id,
+                    Location = new Point(launchButton.Width + 10, temperatureLabel.Location.Y + controlHeight),
+                    BackColor = Color.White
+                };
+                deployButton.Click += DeployButton_Click;
+
+                var cancelButton = new Button()
+                {
+                    Text = "Cancel",
+                    Tag = rockets[i].Id,
+                    Location = new Point(deployButton.Location.X + deployButton.Width + 10, temperatureLabel.Location.Y + controlHeight),
+                    BackColor = Color.White
+                };
+                cancelButton.Click += CancelButton_Click;
 
                 panel.Controls.Add(idLabel);
                 panel.Controls.Add(modelLabel);
@@ -264,6 +305,9 @@ namespace Challenge.Forms
                 panel.Controls.Add(accelerationLabel);
                 panel.Controls.Add(thrustLabel);
                 panel.Controls.Add(temperatureLabel);
+                panel.Controls.Add(launchButton);
+                panel.Controls.Add(deployButton);
+                panel.Controls.Add(cancelButton);
 
                 if (i > 4)
                     panel.Location = new Point(paddingValue + (i - 5) * panel.Width, paddingValue + panel.Height);
@@ -272,6 +316,59 @@ namespace Challenge.Forms
 
                 Controls.Add(panel);
             }
+        }
+
+        private async void CancelButton_Click(object? sender, EventArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        private async void DeployButton_Click(object? sender, EventArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        private async void LaunchButton_Click(object? sender, EventArgs e)
+        {
+            if (sender != null)
+            {
+                var button = (Button)sender;
+                var rocketId = button.Tag;
+                using var client = new HttpClient();
+                try
+                {
+                    button.Enabled = false;
+                    client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
+                    var response = await client.PutAsync(ApiUrl + "/rocket/" + rocketId + "/status" + "/launched", null);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var rocket = await response.Content.ReadFromJsonAsync<Rocket>();
+                        UpdateRocketValues(rocket);
+                    }
+                    if (response.StatusCode == HttpStatusCode.NotModified)
+                    {
+                        MessageBox.Show("Already launched");
+                    }
+                }
+                catch (HttpRequestException ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                    throw;
+                }
+                finally
+                {
+                    button.Enabled = true;
+                }
+            }
+        }
+
+        private void UpdateRocketValues(Rocket? rocket)
+        {
+            throw new NotImplementedException();
         }
 
         private Color GetPanelColorByConnectionStatus(ConnectionStatus connectionStatus)
@@ -300,33 +397,31 @@ namespace Challenge.Forms
 
         private async Task<List<Rocket>> GetRocketsAsync()
         {
-            using (var client = new HttpClient())
+            using var client = new HttpClient();
+            try
             {
-                try
+                client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
+                var response = await client.GetAsync(ApiUrl + "/rockets");
+                if (response.IsSuccessStatusCode)
                 {
-                    client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
-                    var response = await client.GetAsync(ApiUrl + "/rockets");
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var rockets = await response.Content.ReadFromJsonAsync<List<Rocket>>();
-                        if (rockets != null)
-                            return rockets;
-                    }
-                    else if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
-                        return await GetRocketsAsync();
-
-                    return [];
+                    var rockets = await response.Content.ReadFromJsonAsync<List<Rocket>>();
+                    if (rockets != null)
+                        return rockets;
                 }
-                catch (HttpRequestException ex)
-                {
-                    Debug.WriteLine(ex.Message);
+                else if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
                     return await GetRocketsAsync();
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine(ex.Message);
-                    throw;
-                }
+
+                return [];
+            }
+            catch (HttpRequestException ex)
+            {
+                Debug.WriteLine(ex.Message);
+                return await GetRocketsAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
+                throw;
             }
         }
     }
