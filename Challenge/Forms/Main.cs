@@ -31,6 +31,18 @@ namespace Challenge.Forms
             ConnectRockets(rockets);
             InitializeTimer();
         }
+        private void InitializeTimer()
+        {
+            var timer = new System.Windows.Forms.Timer();
+            timer.Interval = 1000;//1sn
+            timer.Tick += Timer_Tick;
+            timer.Start();
+        }
+
+        private async void Timer_Tick(object? sender, EventArgs e)
+        {
+            await UpdateWeatherInformations();
+        }
 
         private void ConnectRockets(List<Rocket> rockets)
         {
@@ -43,42 +55,110 @@ namespace Challenge.Forms
 
         private void ConnectToRocket(Rocket rocket)
         {
-            var tcpClient = new TcpClient();
             try
             {
+                var tcpClient = new TcpClient();
                 tcpClient.Connect("localhost", rocket.Telemetry.Port);
                 var networkStream = tcpClient.GetStream();
                 var panel = FindPanel(rocket.Id);
                 panel.BackColor = GetPanelColorByConnectionStatus(ConnectionStatus.Connected);
                 while (true)
                 {
-                    byte[] buffer = new byte[1024];
+
+                    byte[] buffer = new byte[36];
                     int bytesRead = networkStream.Read(buffer, 0, buffer.Length);
                     if (bytesRead > 0)
                     {
+                        var packetStartByte = buffer[0];//130
+
                         var rocketId = Encoding.UTF8.GetString(buffer, 1, 10);
+
+                        var packetNumber = buffer[11];//0-255
+                        var packetSize = buffer[12];//expected 36 but arrives 20
+
                         var altitude = ConvertByteArrayToFloatBigEndian(buffer, 13, 16);
                         var speed = ConvertByteArrayToFloatBigEndian(buffer, 17, 20);
                         var thrust = ConvertByteArrayToFloatBigEndian(buffer, 25, 28);
                         var temperature = ConvertByteArrayToFloatBigEndian(buffer, 29, 32);
-                        Debug.WriteLine($"id: {rocketId} - altitude: {altitude:F2} - speed: {speed:F2} - thrust: {thrust:F2} - temp: {temperature:F2}");
+
+                        var bypassValue = ConvertByteArrayToShortBigEndian(buffer, 33, 34);
+                        var delimiter = buffer[35];//128
+
+                        Debug.WriteLine($"" +
+                        $"packetStartByte: {packetStartByte} - " +
+                        $"id: {rocketId} - " +
+                        $"packetNumber: {packetNumber} - " +
+                        $"packetSize: {packetSize} - " +
+                        $"altitude: {altitude:F2} - " +
+                        $"speed: {speed:F2} - " +
+                        $"thrust: {thrust:F2} - " +
+                        $"bypassValue: {bypassValue} - " +
+                        $"delimiter: {delimiter} - " +
+                        $"temp: {temperature:F2}");
+
+                        var panelFromReceivedId = FindPanel(rocketId);
+                        UpdateTelemetryValues(panelFromReceivedId, altitude, speed, thrust, temperature);
+                        Thread.Sleep(100);
                     }
                     else
                         throw new Exception();
-                    Thread.Sleep(100);
                 }
-            }
-            catch (InvalidOperationException ex)
-            {
-                throw;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"{rocket.Id} disconnected: {ex.Message}");
                 var panel = FindPanel(rocket.Id);
-                panel.BackColor = GetPanelColorByConnectionStatus(ConnectionStatus.Disconnected);
-                ConnectToRocket(rocket);
+                if (panel != null)
+                {
+                    panel.BackColor = GetPanelColorByConnectionStatus(ConnectionStatus.Disconnected);
+                    ConnectToRocket(rocket);
+                }
             }
+        }
+
+        private void UpdateTelemetryValues(Panel panel, float altitude, float speed, float thrust, float temperature)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() =>
+                {
+                    foreach (Control control in panel.Controls)
+                    {
+
+                        switch (control.Tag)
+                        {
+                            case "Altitude":
+                                control.Text = "Altitude: " + altitude.ToString("F2");
+                                break;
+                            case "Speed":
+                                control.Text = "Speed: " + speed.ToString("F2");
+                                break;
+                            case "Thrust":
+                                control.Text = "Thrust: " + thrust.ToString("F2");
+                                break;
+                            case "Temperature":
+                                control.Text = "Temperature: " + temperature.ToString("F2");
+                                break;
+                            default:
+                                break;
+                        }
+
+                    }
+                }));
+
+            }
+        }
+
+        private Label FindLabelWithTagValue(Control.ControlCollection controls, string tag)
+        {
+            foreach (Control control in controls)
+            {
+                if (control.Tag.Equals(tag))
+                {
+                    return (Label)control;
+                }
+            }
+            return null;
         }
 
         public float ConvertByteArrayToFloatBigEndian(byte[] byteArray, int startIndex, int endIndex)
@@ -91,34 +171,27 @@ namespace Challenge.Forms
             Array.Reverse(reversedBytes);
             return BitConverter.ToSingle(reversedBytes, 0);
         }
+        public float ConvertByteArrayToShortBigEndian(byte[] byteArray, int startIndex, int endIndex)
+        {
+            byte[] reversedBytes = new byte[sizeof(short)];
+            for (int i = startIndex, j = 0; i <= endIndex; i++, j++)
+            {
+                reversedBytes[j] = byteArray[i];
+            }
+            Array.Reverse(reversedBytes);
+            return BitConverter.ToInt16(reversedBytes, 0);
+        }
 
         private Panel FindPanel(string id)
         {
-            foreach (var control in Controls)
+            foreach (Control rocketPanel in Controls)
             {
-                if (control is Panel)
+                if (rocketPanel.Tag.Equals(id))
                 {
-                    var panel = (Panel)control;
-                    if (panel.Tag == id)
-                    {
-                        return panel;
-                    }
+                    return (Panel)rocketPanel;
                 }
             }
             return null;
-        }
-
-        private void InitializeTimer()
-        {
-            var timer = new System.Windows.Forms.Timer();
-            timer.Interval = 1000;//1sn
-            timer.Tick += Timer_Tick;
-            timer.Start();
-        }
-
-        private async void Timer_Tick(object? sender, EventArgs e)
-        {
-            await UpdateWeatherInformations();
         }
 
         private async Task UpdateWeatherInformations()
@@ -157,8 +230,8 @@ namespace Challenge.Forms
                     Width = panelWidth,
                     Height = panelHeight,
                     BorderStyle = BorderStyle.Fixed3D,
+                    AutoScroll = true,
                 };
-                panel.HorizontalScroll.Visible = true;
 
                 panel.BackColor = GetPanelColorByConnectionStatus(rockets[i].Telemetry.ConnectionStatus);
 
@@ -171,11 +244,11 @@ namespace Challenge.Forms
                 var deployedLabel = GetLabel("Deployed", rockets[i].Timestamps.Deployed.ToString(), new Point(0, launchedLabel.Location.Y + labelHeight));
                 var failedLabel = GetLabel("Failed", rockets[i].Timestamps.Failed.ToString(), new Point(0, deployedLabel.Location.Y + labelHeight));
                 var cancelledLabel = GetLabel("Canceled", rockets[i].Timestamps.Canceled.ToString(), new Point(0, failedLabel.Location.Y + labelHeight));
-                var alitudeLabel = GetLabel("Altitude", rockets[i].Altitude.ToString(), new Point(0, cancelledLabel.Location.Y + labelHeight));
-                var speedLabel = GetLabel("Speed", rockets[i].Speed.ToString(), new Point(0, alitudeLabel.Location.Y + labelHeight));
-                var accelerationLabel = GetLabel("Acceleration", rockets[i].Acceleration.ToString(), new Point(0, speedLabel.Location.Y + labelHeight));
-                var thrustLabel = GetLabel("Thrust", rockets[i].Thrust.ToString(), new Point(0, accelerationLabel.Location.Y + labelHeight));
-                var temperatureLabel = GetLabel("Temperature", rockets[i].Temperature.ToString(), new Point(0, thrustLabel.Location.Y + labelHeight));
+                var alitudeLabel = GetLabel("Altitude", rockets[i].Altitude.ToString("F2"), new Point(0, cancelledLabel.Location.Y + labelHeight));
+                var speedLabel = GetLabel("Speed", rockets[i].Speed.ToString("F2"), new Point(0, alitudeLabel.Location.Y + labelHeight));
+                var accelerationLabel = GetLabel("Acceleration", rockets[i].Acceleration.ToString("F2"), new Point(0, speedLabel.Location.Y + labelHeight));
+                var thrustLabel = GetLabel("Thrust", rockets[i].Thrust.ToString("F2"), new Point(0, accelerationLabel.Location.Y + labelHeight));
+                var temperatureLabel = GetLabel("Temperature", rockets[i].Temperature.ToString("F2"), new Point(0, thrustLabel.Location.Y + labelHeight));
 
                 panel.Controls.Add(idLabel);
                 panel.Controls.Add(modelLabel);
