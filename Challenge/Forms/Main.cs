@@ -103,8 +103,11 @@ namespace Challenge.Forms
                             UpdateTelemetryValues(panelFromReceivedId, altitude, speed, thrust, temperature);
                         Thread.Sleep(100);
                     }
-                    else { }
-                    //throw new Exception();
+                    else
+                    {
+                        Debug.WriteLine("bytesRead 0");
+                    }
+
                 }
             }
             catch (Exception ex)
@@ -147,30 +150,6 @@ namespace Challenge.Forms
 
                     }
                 }));
-            }
-            else
-            {
-                foreach (Control control in panel.Controls)
-                {
-                    switch (control.Tag)
-                    {
-                        case "Altitude":
-                            control.Text = "Altitude: " + altitude.ToString("F2");
-                            break;
-                        case "Speed":
-                            control.Text = "Speed: " + speed.ToString("F2");
-                            break;
-                        case "Thrust":
-                            control.Text = "Thrust: " + thrust.ToString("F2");
-                            break;
-                        case "Temperature":
-                            control.Text = "Temperature: " + temperature.ToString("F2");
-                            break;
-                        default:
-                            break;
-                    }
-
-                }
             }
         }
         public float ConvertByteArrayToFloatBigEndian(byte[] byteArray, int startIndex, int endIndex)
@@ -320,16 +299,6 @@ namespace Challenge.Forms
 
         private async void CancelButton_Click(object? sender, EventArgs e)
         {
-            throw new NotImplementedException();
-        }
-
-        private async void DeployButton_Click(object? sender, EventArgs e)
-        {
-            throw new NotImplementedException();
-        }
-
-        private async void LaunchButton_Click(object? sender, EventArgs e)
-        {
             if (sender != null)
             {
                 var button = (Button)sender;
@@ -337,18 +306,21 @@ namespace Challenge.Forms
                 using var client = new HttpClient();
                 try
                 {
-                    button.Enabled = false;
+                    button.Visible = false;
                     client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
-                    var response = await client.PutAsync(ApiUrl + "/rocket/" + rocketId + "/status" + "/launched", null);
+                    var response = await client.DeleteAsync(ApiUrl + "/rocket/" + rocketId + "/status" + "/launched");
                     if (response.IsSuccessStatusCode)
                     {
                         var rocket = await response.Content.ReadFromJsonAsync<Rocket>();
-                        UpdateRocketValues(rocket);
+                        if (rocket != null)
+                        {
+                            var panelFromReceivedId = FindPanel(rocket.Id);
+                            if (panelFromReceivedId != null)
+                                UpdateRocketValues(panelFromReceivedId, rocket);
+                        }
                     }
                     if (response.StatusCode == HttpStatusCode.NotModified)
-                    {
-                        MessageBox.Show("Already launched");
-                    }
+                        MessageBox.Show("Already deployed");
                 }
                 catch (HttpRequestException ex)
                 {
@@ -361,14 +333,188 @@ namespace Challenge.Forms
                 }
                 finally
                 {
-                    button.Enabled = true;
+                    button.Visible = true;
                 }
             }
         }
 
-        private void UpdateRocketValues(Rocket? rocket)
+        private async void DeployButton_Click(object? sender, EventArgs e)
         {
-            throw new NotImplementedException();
+            if (sender != null)
+            {
+                var button = (Button)sender;
+                var rocketId = button.Tag;
+                using var client = new HttpClient();
+                try
+                {
+                    button.Visible = false;
+                    client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
+                    var response = await client.PutAsync(ApiUrl + "/rocket/" + rocketId + "/status" + "/deployed", null);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var rocket = await response.Content.ReadFromJsonAsync<Rocket>();
+                        if (rocket != null)
+                        {
+                            var panelFromReceivedId = FindPanel(rocket.Id);
+                            if (panelFromReceivedId != null)
+                                UpdateRocketValues(panelFromReceivedId, rocket);
+                        }
+                    }
+                    if (response.StatusCode == HttpStatusCode.NotModified)
+                        MessageBox.Show("Already deployed");
+                }
+                catch (HttpRequestException ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                    throw;
+                }
+                finally
+                {
+                    button.Visible = true;
+                }
+            }
+        }
+
+        private async void LaunchButton_Click(object? sender, EventArgs e)
+        {
+            if (sender != null)
+            {
+                var button = (Button)sender;
+                var rocketId = button.Tag;
+                using var client = new HttpClient();
+                try
+                {
+                    button.Visible = false;
+                    client.DefaultRequestHeaders.Add(tokenKey, tokenValue);
+                    var response = await client.PutAsync(ApiUrl + "/rocket/" + rocketId + "/status" + "/launched", null);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var rocket = await response.Content.ReadFromJsonAsync<Rocket>();
+                        if (rocket != null)
+                        {
+                            var panelFromReceivedId = FindPanel(rocket.Id);
+                            if (panelFromReceivedId != null)
+                                UpdateRocketValues(panelFromReceivedId, rocket);
+                        }
+                    }
+                    if (response.StatusCode == HttpStatusCode.NotModified)
+                        MessageBox.Show("Already launched");
+                }
+                catch (HttpRequestException ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                    throw;
+                }
+                finally
+                {
+                    button.Visible = true;
+                }
+            }
+        }
+
+        private void UpdateRocketValues(Panel panel, Rocket rocket)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() =>
+                {
+                    foreach (Control control in panel.Controls)
+                    {
+                        switch (control.Tag)
+                        {
+                            case "Altitude":
+                                control.Text = "Altitude: " + rocket.Altitude.ToString("F2");
+                                break;
+                            case "Speed":
+                                control.Text = "Speed: " + rocket.Speed.ToString("F2");
+                                break;
+                            case "Thrust":
+                                control.Text = "Thrust: " + rocket.Thrust.ToString("F2");
+                                break;
+                            case "Temperature":
+                                control.Text = "Temperature: " + rocket.Temperature.ToString("F2");
+                                break;
+                            case "Weight":
+                                control.Text = "Weight: " + rocket.Payload.Weight.ToString("F2");
+                                break;
+                            case "Status":
+                                control.Text = "Status: " + rocket.Status;
+                                break;
+                            case "Launched":
+                                control.Text = "Launched: " + rocket.Timestamps.Launched.ToString();
+                                break;
+                            case "Deployed":
+                                control.Text = "Deployed: " + rocket.Timestamps.Deployed.ToString();
+                                break;
+                            case "Canceled":
+                                control.Text = "Canceled: " + rocket.Timestamps.Canceled.ToString();
+                                break;
+                            case "Failed":
+                                control.Text = "Failed: " + rocket.Timestamps.Failed.ToString();
+                                break;
+                            case "Acceleration":
+                                control.Text = "Acceleration: " + rocket.Acceleration.ToString();
+                                break;
+                            default:
+                                break;
+                        }
+
+                    }
+                }));
+            }
+            else
+            {
+                foreach (Control control in panel.Controls)
+                {
+                    switch (control.Tag)
+                    {
+                        case "Altitude":
+                            control.Text = "Altitude: " + rocket.Altitude.ToString("F2");
+                            break;
+                        case "Speed":
+                            control.Text = "Speed: " + rocket.Speed.ToString("F2");
+                            break;
+                        case "Thrust":
+                            control.Text = "Thrust: " + rocket.Thrust.ToString("F2");
+                            break;
+                        case "Temperature":
+                            control.Text = "Temperature: " + rocket.Temperature.ToString("F2");
+                            break;
+                        case "Weight":
+                            control.Text = "Weight: " + rocket.Payload.Weight.ToString("F2");
+                            break;
+                        case "Status":
+                            control.Text = "Status: " + rocket.Status;
+                            break;
+                        case "Launched":
+                            control.Text = "Launched: " + rocket.Timestamps.Launched.ToString();
+                            break;
+                        case "Deployed":
+                            control.Text = "Deployed: " + rocket.Timestamps.Deployed.ToString();
+                            break;
+                        case "Canceled":
+                            control.Text = "Canceled: " + rocket.Timestamps.Canceled.ToString();
+                            break;
+                        case "Failed":
+                            control.Text = "Failed: " + rocket.Timestamps.Failed.ToString();
+                            break;
+                        case "Acceleration":
+                            control.Text = "Acceleration: " + rocket.Acceleration.ToString();
+                            break;
+                        default:
+                            break;
+                    }
+
+                }
+            }
         }
 
         private Color GetPanelColorByConnectionStatus(ConnectionStatus connectionStatus)
